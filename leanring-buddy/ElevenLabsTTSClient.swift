@@ -10,17 +10,27 @@
 import AVFoundation
 import Foundation
 
+struct ElevenLabsTTSConfigurationError: LocalizedError {
+    let message: String
+
+    var errorDescription: String? {
+        message
+    }
+}
+
 @MainActor
 final class ElevenLabsTTSClient {
-    private let proxyURL: URL
+    private let apiKey: String?
+    private let voiceID: String?
     private let session: URLSession
 
     /// The audio player for the current TTS playback. Kept alive so the
     /// audio finishes playing even if the caller doesn't hold a reference.
     private var audioPlayer: AVAudioPlayer?
 
-    init(proxyURL: String) {
-        self.proxyURL = URL(string: proxyURL)!
+    init(apiKey: String?, voiceID: String?) {
+        self.apiKey = apiKey
+        self.voiceID = voiceID
 
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30
@@ -31,10 +41,18 @@ final class ElevenLabsTTSClient {
     /// Sends `text` to ElevenLabs TTS and plays the resulting audio.
     /// Throws on network or decoding errors. Cancellation-safe.
     func speakText(_ text: String) async throws {
-        var request = URLRequest(url: proxyURL)
+        guard let apiKey, let voiceID else {
+            throw ElevenLabsTTSConfigurationError(
+                message: "ElevenLabs TTS is not configured. Add ElevenLabsAPIKey and ElevenLabsVoiceID to Info.plist."
+            )
+        }
+
+        let ttsURL = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceID)")!
+        var request = URLRequest(url: ttsURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
+        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
 
         let body: [String: Any] = [
             "text": text,

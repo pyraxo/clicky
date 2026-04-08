@@ -5,17 +5,27 @@
 
 import Foundation
 
+struct ClaudeAPIConfigurationError: LocalizedError {
+    let message: String
+
+    var errorDescription: String? {
+        message
+    }
+}
+
 /// Claude API helper with streaming for progressive text display.
 class ClaudeAPI {
     private static let tlsWarmupLock = NSLock()
     private static var hasStartedTLSWarmup = false
 
+    private let apiKey: String?
     private let apiURL: URL
     var model: String
     private let session: URLSession
 
-    init(proxyURL: String, model: String = "claude-sonnet-4-6") {
-        self.apiURL = URL(string: proxyURL)!
+    init(apiKey: String?, model: String = "claude-sonnet-4-6") {
+        self.apiKey = apiKey
+        self.apiURL = URL(string: "https://api.anthropic.com/v1/messages")!
         self.model = model
 
         // Use .default instead of .ephemeral so TLS session tickets are cached.
@@ -36,11 +46,19 @@ class ClaudeAPI {
         warmUpTLSConnectionIfNeeded()
     }
 
-    private func makeAPIRequest() -> URLRequest {
+    private func makeAPIRequest() throws -> URLRequest {
+        guard let apiKey else {
+            throw ClaudeAPIConfigurationError(
+                message: "Anthropic API is not configured. Add AnthropicAPIKey to Info.plist."
+            )
+        }
+
         var request = URLRequest(url: apiURL)
         request.httpMethod = "POST"
         request.timeoutInterval = 120
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         return request
     }
 
@@ -107,7 +125,7 @@ class ClaudeAPI {
     ) async throws -> (text: String, duration: TimeInterval) {
         let startTime = Date()
 
-        var request = makeAPIRequest()
+        var request = try makeAPIRequest()
 
         // Build messages array
         var messages: [[String: Any]] = []
@@ -220,7 +238,7 @@ class ClaudeAPI {
     ) async throws -> (text: String, duration: TimeInterval) {
         let startTime = Date()
 
-        var request = makeAPIRequest()
+        var request = try makeAPIRequest()
 
         var messages: [[String: Any]] = []
         for (userPlaceholder, assistantResponse) in conversationHistory {
